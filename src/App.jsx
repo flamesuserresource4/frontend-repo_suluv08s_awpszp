@@ -30,33 +30,64 @@ function DietPlan({ age }) {
 
   useEffect(() => {
     if (!age) return
+    // Guard: only fetch when within valid range
+    if (age < 13 || age > 70) {
+      setPlan(null)
+      setError('Enter an age between 13 and 70 to see a plan')
+      return
+    }
+    let cancelled = false
     setLoading(true)
     setError(null)
     fetch(`${API_BASE}/api/diet-plan/${age}`)
-      .then(r => r.json())
-      .then(setPlan)
-      .catch(() => setError('Could not load plan'))
-      .finally(() => setLoading(false))
+      .then(async (r) => {
+        const data = await r.json().catch(() => null)
+        if (!r.ok) throw new Error((data && (data.detail || data.message)) || 'Failed to load plan')
+        return data
+      })
+      .then((data) => {
+        if (cancelled) return
+        setPlan(data)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setPlan(null)
+        setError(e.message || 'Could not load plan')
+      })
+      .finally(() => {
+        if (cancelled) return
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [age])
 
   if (!age) return null
   if (loading) return <div className="text-white">Loading...</div>
-  if (error) return <div className="text-red-300">{error}</div>
+  if (error) return (
+    <Card className="mt-4 bg-red-100">
+      <div className="text-red-700 font-semibold">{error}</div>
+    </Card>
+  )
   if (!plan) return null
+
+  const focus = Array.isArray(plan.focus) ? plan.focus.join(', ') : String(plan.focus || '')
+  const meals = Array.isArray(plan.meals) ? plan.meals : []
 
   return (
     <Card className="mt-4">
       <h3 className="text-2xl font-extrabold text-black mb-2">Suggested Plan</h3>
       <div className="flex flex-wrap gap-3 items-center">
-        <Stat label="Calories" value={plan.calories} />
-        <Stat label="Focus" value={plan.focus.join(', ')} />
+        <Stat label="Calories" value={plan.calories ?? ''} />
+        <Stat label="Focus" value={focus} />
       </div>
       <div className="grid md:grid-cols-2 gap-3 mt-4">
-        {plan.meals.map((m, idx) => (
+        {meals.map((m, idx) => (
           <div key={idx} className="border-2 border-black p-3 bg-yellow-50">
             <div className="font-extrabold text-black">{m.name}</div>
             <ul className="list-disc ml-5 text-sm">
-              {m.items.map((i, j) => (
+              {(Array.isArray(m.items) ? m.items : []).map((i, j) => (
                 <li key={j}>{i}</li>
               ))}
             </ul>
@@ -74,13 +105,14 @@ function App() {
   const [user, setUser] = useState(null)
   const [tasks, setTasks] = useState([])
 
-  const canCreate = useMemo(() => name.trim().length > 1 && Number(age) >= 13 && Number(age) <= 70, [name, age])
+  const numericAge = Number(age)
+  const canCreate = useMemo(() => name.trim().length > 1 && numericAge >= 13 && numericAge <= 70, [name, numericAge])
 
   const createProfile = async () => {
     const res = await fetch(`${API_BASE}/api/profile`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, age: Number(age) })
+      body: JSON.stringify({ name, age: numericAge })
     })
     const data = await res.json()
     setUser(data)
@@ -134,7 +166,7 @@ function App() {
                 <PixelButton onClick={createProfile} variant="primary" className="w-full" disabled={!canCreate}>Start Quest</PixelButton>
               </div>
             </div>
-            <DietPlan age={Number(age)} />
+            <DietPlan age={numericAge} />
           </Card>
         )}
 
