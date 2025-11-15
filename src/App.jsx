@@ -1,26 +1,195 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { PixelButton, Card, Stat } from './components/RetroUI'
+import Spline from '@splinetool/react-spline'
 
-function App() {
-  const [count, setCount] = useState(0)
+const API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
+function Hero() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center">
-      <div className="bg-white p-8 rounded-lg shadow-lg">
-        <h1 className="text-3xl font-bold text-gray-800 mb-4">
-          Vibe Coding Platform
-        </h1>
-        <p className="text-gray-600 mb-6">
-          Your AI-powered development environment
-        </p>
-        <div className="text-center">
-          <button
-            onClick={() => setCount(count + 1)}
-            className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded"
-          >
-            Count is {count}
-          </button>
+    <div className="relative w-full h-[60vh] md:h-[70vh] overflow-hidden">
+      <Spline scene="https://prod.spline.design/OIGfFUmCnZ3VD8gH/scene.splinecode" style={{ width: '100%', height: '100%' }} />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#0c0c0c]" />
+      <div className="absolute inset-0 flex items-end md:items-center justify-center pb-6">
+        <div className="text-center max-w-3xl px-4">
+          <h1 className="text-4xl md:text-6xl font-extrabold text-yellow-300 drop-shadow-[4px_4px_0_#000] tracking-widest">
+            Retro Diet Quest
+          </h1>
+          <p className="mt-3 md:mt-4 text-white text-sm md:text-base font-semibold bg-black/50 inline-block px-4 py-2 border-2 border-yellow-300">
+            Level up your health with age-based diet plans and daily quests.
+          </p>
         </div>
       </div>
+    </div>
+  )
+}
+
+function DietPlan({ age }) {
+  const [plan, setPlan] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!age) return
+    setLoading(true)
+    setError(null)
+    fetch(`${API_BASE}/api/diet-plan/${age}`)
+      .then(r => r.json())
+      .then(setPlan)
+      .catch(() => setError('Could not load plan'))
+      .finally(() => setLoading(false))
+  }, [age])
+
+  if (!age) return null
+  if (loading) return <div className="text-white">Loading...</div>
+  if (error) return <div className="text-red-300">{error}</div>
+  if (!plan) return null
+
+  return (
+    <Card className="mt-4">
+      <h3 className="text-2xl font-extrabold text-black mb-2">Suggested Plan</h3>
+      <div className="flex flex-wrap gap-3 items-center">
+        <Stat label="Calories" value={plan.calories} />
+        <Stat label="Focus" value={plan.focus.join(', ')} />
+      </div>
+      <div className="grid md:grid-cols-2 gap-3 mt-4">
+        {plan.meals.map((m, idx) => (
+          <div key={idx} className="border-2 border-black p-3 bg-yellow-50">
+            <div className="font-extrabold text-black">{m.name}</div>
+            <ul className="list-disc ml-5 text-sm">
+              {m.items.map((i, j) => (
+                <li key={j}>{i}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </Card>
+  )
+}
+
+function App() {
+  const [step, setStep] = useState('create')
+  const [name, setName] = useState('')
+  const [age, setAge] = useState('')
+  const [user, setUser] = useState(null)
+  const [tasks, setTasks] = useState([])
+
+  const canCreate = useMemo(() => name.trim().length > 1 && Number(age) >= 13 && Number(age) <= 70, [name, age])
+
+  const createProfile = async () => {
+    const res = await fetch(`${API_BASE}/api/profile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, age: Number(age) })
+    })
+    const data = await res.json()
+    setUser(data)
+    setStep('play')
+    loadTasks(data._id)
+  }
+
+  const loadTasks = async (uid) => {
+    const res = await fetch(`${API_BASE}/api/profile/${uid}/tasks`)
+    const data = await res.json()
+    setTasks(data)
+  }
+
+  const addTask = async (title) => {
+    if (!user) return
+    const res = await fetch(`${API_BASE}/api/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: user._id, title })
+    })
+    const data = await res.json()
+    setTasks(prev => [data, ...prev])
+  }
+
+  const toggleTask = async (taskId, completed) => {
+    await fetch(`${API_BASE}/api/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completed })
+    })
+    setTasks(prev => prev.map(t => t._id === taskId ? { ...t, completed } : t))
+  }
+
+  return (
+    <div className="min-h-screen bg-[#0c0c0c] text-white">
+      <Hero />
+
+      <div className="max-w-5xl mx-auto px-4 -mt-10 md:-mt-16 relative z-10">
+        {step === 'create' && (
+          <Card className="bg-yellow-100">
+            <div className="grid md:grid-cols-3 gap-4 items-end">
+              <div>
+                <label className="block text-black font-extrabold mb-1">Hero Name</label>
+                <input value={name} onChange={e=>setName(e.target.value)} className="w-full border-4 border-black p-2 font-mono" placeholder="e.g., Mario" />
+              </div>
+              <div>
+                <label className="block text-black font-extrabold mb-1">Age (13-70)</label>
+                <input type="number" value={age} onChange={e=>setAge(e.target.value)} className="w-full border-4 border-black p-2 font-mono" />
+              </div>
+              <div className="flex gap-2">
+                <PixelButton onClick={createProfile} variant="primary" className="w-full" disabled={!canCreate}>Start Quest</PixelButton>
+              </div>
+            </div>
+            <DietPlan age={Number(age)} />
+          </Card>
+        )}
+
+        {step === 'play' && user && (
+          <div className="grid md:grid-cols-3 gap-4">
+            <Card className="md:col-span-2 bg-white">
+              <div className="flex items-center justify-between">
+                <div className="text-black">
+                  <div className="text-xl font-extrabold">{user.name}</div>
+                  <div className="text-sm">Age: {user.age}</div>
+                </div>
+                <div className="flex gap-3">
+                  <Stat label="Level" value={user.level ?? 1} />
+                  <Stat label="XP" value={user.xp ?? 0} />
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <TaskEditor onAdd={addTask} />
+                <TaskList tasks={tasks} onToggle={toggleTask} />
+              </div>
+            </Card>
+            <Card className="bg-yellow-100">
+              <h3 className="text-black font-extrabold text-xl">Diet Plan</h3>
+              <DietPlan age={user.age} />
+            </Card>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TaskEditor({ onAdd }) {
+  const [title, setTitle] = useState('')
+  return (
+    <div className="flex gap-2">
+      <input className="flex-1 border-4 border-black p-2 font-mono" value={title} onChange={e=>setTitle(e.target.value)} placeholder="Add a quest..." />
+      <PixelButton onClick={() => { if(title.trim()) { onAdd(title.trim()); setTitle('') } }} variant="secondary">Add</PixelButton>
+    </div>
+  )
+}
+
+function TaskList({ tasks, onToggle }) {
+  if (!tasks?.length) return <div className="text-black">No quests yet. Add one!</div>
+  return (
+    <div className="mt-3 space-y-2">
+      {tasks.map(t => (
+        <div key={t._id} className={`flex items-center justify-between border-4 border-black p-2 ${t.completed ? 'bg-green-200' : 'bg-white'}`}>
+          <div className="text-black font-semibold">{t.title}</div>
+          <PixelButton variant={t.completed ? 'danger' : 'secondary'} onClick={() => onToggle(t._id, !t.completed)}>
+            {t.completed ? 'Undo' : 'Complete'}
+          </PixelButton>
+        </div>
+      ))}
     </div>
   )
 }
